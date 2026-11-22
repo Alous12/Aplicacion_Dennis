@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { firmarToken, requiereAuth, type Rol } from '../lib/auth';
 import { HttpError } from '../lib/errores';
 import { db, firebaseAuth } from '../lib/firebase';
+import { contextoDe } from '../lib/permisos';
 
 export const auth = Router();
 const usuarios = db.collection('usuarios');
@@ -20,16 +21,34 @@ interface UsuarioDoc {
   passwordHash?: string;
   proveedores?: string[];
   celulaId?: string;
+  categoriaId?: string;
 }
 
-function respuestaSesion(id: string, u: UsuarioDoc) {
+/**
+ * Datos del usuario para el frontend: iglesia en el hogar, categoría y permisos.
+ * No van en el JWT: el backend los lee de la base en cada petición, así los cambios del admin aplican al instante.
+ */
+async function perfil(id: string, u: UsuarioDoc) {
+  const ctx = await contextoDe(id);
+  return {
+    sub: id,
+    email: u.email,
+    nombre: u.nombre,
+    rol: ctx.rol,
+    celulaId: ctx.celulaId,
+    categoriaId: ctx.categoriaId,
+    categoria: ctx.categoria,
+    permisos: ctx.permisos,
+  };
+}
+
+async function respuestaSesion(id: string, u: UsuarioDoc) {
   if (u.estado === 'pendiente') {
     throw new HttpError(403, 'Tu cuenta está pendiente de aprobación por un administrador.');
   }
   if (u.estado !== 'activo') throw new HttpError(403, 'Tu cuenta está desactivada.');
-  const datos = { sub: id, email: u.email, nombre: u.nombre, rol: u.rol };
-  // celulaId no va en el JWT: se lee de la base en cada petición para que los cambios del admin apliquen al instante.
-  return { token: firmarToken(datos), usuario: { ...datos, celulaId: u.celulaId ?? '' } };
+  const token = firmarToken({ sub: id, email: u.email, nombre: u.nombre, rol: u.rol });
+  return { token, usuario: await perfil(id, u) };
 }
 
 // ───────── Login con email + contraseña ─────────
@@ -45,7 +64,7 @@ auth.post('/login', async (req, res) => {
   if (!(await bcrypt.compare(password, u.passwordHash))) {
     throw new HttpError(401, 'Correo o contraseña incorrectos');
   }
-  const sesion = respuestaSesion(id, u);
+  const sesion = await respuestaSesion(id, u);
   await usuarios.doc(id).update({ ultimoAcceso: FieldValue.serverTimestamp() });
   res.json(sesion);
 });
@@ -108,16 +127,16 @@ auth.post('/google', async (req, res) => {
   } else if (!u.proveedores?.includes('google')) {
     await ref.update({ proveedores: FieldValue.arrayUnion('google') });
   }
-  const sesion = respuestaSesion(id, u);
+  const sesion = await respuestaSesion(id, u);
   await ref.update({ ultimoAcceso: FieldValue.serverTimestamp() });
   res.json(sesion);
 });
 
-// ───────── Usuario actual (datos frescos de la base: rol, estado y célula que lidera) ─────────
+// ───────── Usuario actual (datos frescos de la base: rol, categoría, permisos e iglesia en el hogar) ─────────
 auth.get('/yo', requiereAuth, async (req, res) => {
   const u = (await usuarios.doc(req.usuario!.sub).get()).data() as UsuarioDoc | undefined;
   if (!u || u.estado !== 'activo') throw new HttpError(401, 'Tu cuenta ya no está activa');
-  res.json({ sub: req.usuario!.sub, email: u.email, nombre: u.nombre, rol: u.rol, celulaId: u.celulaId ?? '' });
+  res.json(await perfil(req.usuario!.sub, u));
 });
 
 // ───────── Cambiar contraseña propia ─────────

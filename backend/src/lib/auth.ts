@@ -47,13 +47,3 @@ export function requiereAuth(req: Request, _res: Response, next: NextFunction) {
     throw new HttpError(401, 'Sesión expirada o inválida');
   }
 }
-
-/** Exige que el usuario autenticado tenga alguno de los roles indicados. */
-export function requiereRol(...roles: Rol[]) {
-  return (req: Request, _res: Response, next: NextFunction) => {
-    if (!req.usuario || !roles.includes(req.usuario.rol)) {
-      throw new HttpError(403, 'No tienes permiso para esta acción');
-    }
-    next();
-  };
-}

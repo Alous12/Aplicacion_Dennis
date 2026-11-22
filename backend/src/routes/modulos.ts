@@ -1,9 +1,10 @@
 import { Router, type Request } from 'express';
+import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
-import type { Rol } from '../lib/auth';
 import { crearCrud } from '../lib/crud';
 import { HttpError } from '../lib/errores';
 import { db } from '../lib/firebase';
+import { contexto, tienePermiso, type Acceso } from '../lib/permisos';
 
 // ───────── Ayudantes de validación ─────────
 const texto = (max = 200) => z.string().trim().max(max).optional().default('');
@@ -19,9 +20,8 @@ const opcion = <T extends [string, ...string[]]>(valores: T, porDefecto: T[numbe
   z.enum(valores).optional().default(porDefecto as never);
 
 // ───────── Permisos por módulo ─────────
-// Cambia estos arreglos para ajustar qué puede hacer cada rol.
-const TODOS: Rol[] = ['admin', 'usuario'];
-const ADMIN: Rol[] = ['admin'];
+// 'todos' = cualquier usuario con sesión; si no, el permiso que debe tener su categoría (ver lib/permisos.ts).
+const TODOS: Acceso = 'todos';
 
 export const modulos = Router();
 
@@ -32,7 +32,7 @@ modulos.use(
     coleccion: 'personas',
     leer: TODOS,
     escribir: TODOS,
-    borrar: ADMIN,
+    borrar: 'miembros',
     esquema: z.object({
       nombre: requerido(80),
       apellido: texto(80),
@@ -56,10 +56,10 @@ modulos.use(
 modulos.use(
   '/celulas',
   crearCrud({
-    coleccion: 'celulas',
+    coleccion: 'celulas', // iglesias en el hogar
     leer: TODOS,
-    escribir: ADMIN,
-    borrar: ADMIN,
+    escribir: 'miembros',
+    borrar: 'miembros',
     esquema: z.object({
       nombre: requerido(80),
       lider: texto(100),
@@ -80,7 +80,7 @@ modulos.use(
     campoFecha: 'fecha',
     leer: TODOS,
     escribir: TODOS,
-    borrar: ADMIN,
+    borrar: 'eventos',
     esquema: z.object({
       titulo: requerido(120),
       tipo: opcion(['culto', 'evento', 'reunion', 'conferencia', 'otro'], 'culto'),
@@ -106,8 +106,8 @@ modulos.use(
   crearCrud({
     coleccion: 'ministerios',
     leer: TODOS,
-    escribir: ADMIN,
-    borrar: ADMIN,
+    escribir: 'ministerios',
+    borrar: 'ministerios',
     esquema: z.object({
       nombre: requerido(80),
       descripcion: texto(1000),
@@ -125,7 +125,7 @@ modulos.use(
     coleccion: 'voluntarios',
     leer: TODOS,
     escribir: TODOS,
-    borrar: ADMIN,
+    borrar: 'ministerios',
     esquema: z.object({
       ministerioId: requerido(100),
       personaId: requerido(100),
@@ -146,8 +146,8 @@ modulos.use(
   crearCrud({
     coleccion: 'inventario',
     leer: TODOS,
-    escribir: ADMIN,
-    borrar: ADMIN,
+    escribir: 'recursos',
+    borrar: 'recursos',
     esquema: z.object({
       nombre: requerido(100),
       categoria: opcion(['insumo', 'equipo', 'mobiliario', 'instrumento', 'otro'], 'equipo'),
@@ -165,8 +165,8 @@ modulos.use(
   crearCrud({
     coleccion: 'espacios',
     leer: TODOS,
-    escribir: ADMIN,
-    borrar: ADMIN,
+    escribir: 'recursos',
+    borrar: 'recursos',
     esquema: z.object({
       nombre: requerido(80),
       capacidad: numero,
@@ -201,7 +201,7 @@ modulos.use(
     campoFecha: 'fecha',
     leer: TODOS,
     escribir: TODOS,
-    borrar: ADMIN,
+    borrar: 'recursos',
     esquema: z.object({
       objetivo: requerido(120),
       tipo: opcion(['preventivo', 'correctivo'], 'preventivo'),
@@ -214,7 +214,67 @@ modulos.use(
   }),
 );
 
-// ═════════ Tesorería (solo administradores) ═════════
+
+// ═════════ Iglesias en el hogar: control de asistencia ═════════
+// Quien tiene "miembros" gestiona la asistencia de todas; quien tiene "hogar", solo la de SU iglesia en el hogar.
+async function puedeGestionarHogar(req: Request, celulaId: string) {
+  const ctx = await contexto(req);
+  if (ctx.permisos.includes('miembros')) return;
+  if (ctx.permisos.includes('hogar') && ctx.celulaId && ctx.celulaId === celulaId) return;
+  throw new HttpError(403, 'Solo puedes gestionar la asistencia de tu iglesia en el hogar');
+}
+
+const asistencias = db.collection('asistencias');
+const idAsistencia = (celulaId: string, f: string) => `${celulaId}_${f}`;
+
+modulos.get('/asistencias', async (req, res) => {
+  const celulaId = z.string().min(1, 'Elige una iglesia en el hogar').max(100).parse(req.query.celulaId);
+  await puedeGestionarHogar(req, celulaId);
+  const desde = typeof req.query.desde === 'string' ? req.query.desde : '';
+  const hasta = typeof req.query.hasta === 'string' ? req.query.hasta : '';
+  const snap = await asistencias.where('celulaId', '==', celulaId).get();
+  const items = snap.docs
+    .map((d) => {
+      const { creadoEn: _c, actualizadoEn, ...resto } = d.data();
+      return { id: d.id, ...resto, fecha: String(resto.fecha ?? ''), actualizadoEn: actualizadoEn?.toDate?.()?.toISOString() ?? null };
+    })
+    .filter((a) => (!desde || a.fecha >= desde) && (!hasta || a.fecha <= hasta))
+    .sort((a, b) => b.fecha.localeCompare(a.fecha));
+  res.json(items);
+});
+
+modulos.put('/asistencias/:celulaId/:fecha', async (req, res) => {
+  const celulaId = String(req.params.celulaId);
+  const f = fecha.parse(req.params.fecha);
+  await puedeGestionarHogar(req, celulaId);
+  if (!(await db.collection('celulas').doc(celulaId).get()).exists) throw new HttpError(404, 'La iglesia en el hogar no existe');
+  const datos = z
+    .object({
+      presentes: ids, // personas registradas que asistieron
+      visitas: numero, // asistentes sin registrar
+      notas: texto(1000),
+    })
+    .parse(req.body);
+  const ref = asistencias.doc(idAsistencia(celulaId, f));
+  await ref.set({
+    ...datos,
+    celulaId,
+    fecha: f,
+    total: datos.presentes.length + Number(datos.visitas),
+    actualizadoPor: req.usuario!.email,
+    actualizadoEn: FieldValue.serverTimestamp(),
+  });
+  res.json({ id: ref.id, celulaId, fecha: f, ...datos, total: datos.presentes.length + Number(datos.visitas) });
+});
+
+modulos.delete('/asistencias/:celulaId/:fecha', async (req, res) => {
+  const celulaId = String(req.params.celulaId);
+  await puedeGestionarHogar(req, celulaId);
+  await asistencias.doc(idAsistencia(celulaId, fecha.parse(req.params.fecha))).delete();
+  res.status(204).end();
+});
+
+// ═════════ Tesorería ═════════
 async function siguienteRecibo(): Promise<number> {
   const ref = db.collection('contadores').doc('recibos');
   return db.runTransaction(async (tx) => {
@@ -225,16 +285,16 @@ async function siguienteRecibo(): Promise<number> {
   });
 }
 
-/** Célula que lidera el usuario (asignada por un admin en la colección "usuarios"). */
-async function celulaDelLider(req: Request): Promise<string> {
-  const doc = await db.collection('usuarios').doc(req.usuario!.sub).get();
-  const celulaId = (doc.data()?.celulaId as string | undefined) ?? '';
-  if (!celulaId) throw new HttpError(403, 'No eres líder de ninguna célula');
-  return celulaId;
+/** Iglesia en el hogar del usuario, si tiene el permiso "hogar" (registrar sus ingresos y asistencia). */
+async function hogarPropio(req: Request): Promise<string> {
+  const ctx = await contexto(req);
+  if (!ctx.permisos.includes('hogar')) throw new HttpError(403, 'No tienes permiso para ver los ingresos de la tesorería');
+  if (!ctx.celulaId) throw new HttpError(403, 'No tienes una iglesia en el hogar asignada');
+  return ctx.celulaId;
 }
 
-// Los administradores gestionan todo. Un líder de célula solo puede VER y REGISTRAR
-// los ingresos de su propia célula (no puede editarlos ni borrarlos).
+// Con permiso "tesoreria" se gestiona todo. Con permiso "hogar" solo se VEN y REGISTRAN
+// los ingresos de la propia iglesia en el hogar (no se pueden editar ni borrar).
 modulos.use(
   '/ingresos',
   crearCrud({
@@ -242,17 +302,17 @@ modulos.use(
     campoFecha: 'fecha',
     leer: TODOS,
     escribir: TODOS,
-    editar: ADMIN,
-    borrar: ADMIN,
+    editar: 'tesoreria',
+    borrar: 'tesoreria',
     alcance: async (req) => {
-      if (req.usuario!.rol === 'admin') return null;
-      const celulaId = await celulaDelLider(req);
+      if (await tienePermiso(req, 'tesoreria')) return null;
+      const celulaId = await hogarPropio(req);
       return (item) => item.celulaId === celulaId;
     },
     esquema: z.object({
       fecha,
       tipo: opcion(['diezmo', 'ofrenda', 'ofrenda_especial', 'donacion', 'otro'], 'ofrenda'),
-      origen: opcion(['culto', 'online', 'celula', 'otro'], 'culto'),
+      origen: opcion(['culto', 'online', 'celula', 'otro'], 'culto'), // celula = iglesia en el hogar
       celulaId: texto(100),
       eventoId: texto(100),
       personaId: texto(100),
@@ -262,32 +322,128 @@ modulos.use(
       descripcion: texto(500),
     }),
     preparar: async (datos, req, esNuevo) => {
-      if (req.usuario!.rol !== 'admin') {
-        // El líder solo registra ingresos de SU célula, sin importar lo que envíe.
-        datos = { ...datos, origen: 'celula', celulaId: await celulaDelLider(req), eventoId: '' };
+      if (await tienePermiso(req, 'tesoreria')) {
+        if (datos.origen !== 'celula') datos = { ...datos, celulaId: '' };
+        // Si no se eligió, se usa la iglesia en el hogar de quien registra.
+        else if (!datos.celulaId) datos = { ...datos, celulaId: (await contexto(req)).celulaId };
+        if (datos.origen === 'celula' && !datos.celulaId) throw new HttpError(400, 'Elige la iglesia en el hogar');
+      } else {
+        // Sin permiso de tesorería solo se registran ingresos de SU iglesia en el hogar, sin importar lo que envíe.
+        datos = { ...datos, origen: 'celula', celulaId: await hogarPropio(req), eventoId: '' };
       }
       return esNuevo ? { ...datos, numeroRecibo: await siguienteRecibo() } : datos;
     },
   }),
 );
 
+const categoriaEgreso = opcion(['proveedor', 'nomina', 'servicios', 'mantenimiento', 'ministerios', 'eventos', 'otro'], 'otro');
+const metodoPago = opcion(['efectivo', 'transferencia', 'qr'], 'efectivo');
+
 modulos.use(
   '/egresos',
   crearCrud({
     coleccion: 'egresos',
     campoFecha: 'fecha',
-    leer: ADMIN,
-    escribir: ADMIN,
-    borrar: ADMIN,
+    leer: 'tesoreria',
+    escribir: 'tesoreria',
+    borrar: 'tesoreria',
     esquema: z.object({
       fecha,
-      categoria: opcion(['proveedor', 'nomina', 'servicios', 'mantenimiento', 'ministerios', 'eventos', 'otro'], 'otro'),
+      categoria: categoriaEgreso,
       beneficiario: texto(120),
       concepto: requerido(200),
-      metodo: opcion(['efectivo', 'transferencia', 'qr'], 'efectivo'),
+      metodo: metodoPago,
       comprobante: texto(60),
       monto,
+      pagoRecurrenteId: texto(100),
     }),
+  }),
+);
+
+// ───────── Pagos recurrentes (alquiler, servicios, sueldos…) con aviso de días restantes ─────────
+const FRECUENCIAS = ['semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual'] as const;
+type Frecuencia = (typeof FRECUENCIAS)[number];
+const MESES_POR_FRECUENCIA: Partial<Record<Frecuencia, number>> = { mensual: 1, bimestral: 2, trimestral: 3, semestral: 6, anual: 12 };
+
+/**
+ * Siguiente fecha de pago. Si el mes siguiente es más corto se usa su último día,
+ * y `diaBase` recuerda el día original (p. ej. 31) para volver a él en los meses largos.
+ */
+export function siguienteFecha(iso: string, frecuencia: Frecuencia, diaBase?: number): string {
+  const [a, m, d] = iso.split('-').map(Number);
+  const meses = MESES_POR_FRECUENCIA[frecuencia];
+  let r: Date;
+  if (!meses) {
+    r = new Date(Date.UTC(a, m - 1, d + (frecuencia === 'semanal' ? 7 : 14)));
+  } else {
+    const ultimo = new Date(Date.UTC(a, m - 1 + meses + 1, 0)).getUTCDate();
+    r = new Date(Date.UTC(a, m - 1 + meses, Math.min(diaBase ?? d, ultimo)));
+  }
+  return r.toISOString().slice(0, 10);
+}
+
+/** Registra el pago (crea el egreso) y pasa la fecha al siguiente periodo, todo en una transacción. */
+modulos.post('/pagos-recurrentes/:id/pagar', async (req, res) => {
+  if (!(await tienePermiso(req, 'tesoreria'))) throw new HttpError(403, 'No tienes permiso para esta acción');
+  const datos = z
+    .object({
+      fecha,
+      monto: monto.optional(),
+      metodo: z.enum(['efectivo', 'transferencia', 'qr']).optional(),
+      comprobante: texto(60),
+    })
+    .parse(req.body);
+  const ref = db.collection('pagosRecurrentes').doc(String(req.params.id));
+  const egresoRef = db.collection('egresos').doc();
+  const resultado = await db.runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+    if (!doc.exists) throw new HttpError(404, 'No encontrado');
+    const p = doc.data()!;
+    const proximaFecha = siguienteFecha(String(p.proximaFecha), p.frecuencia as Frecuencia, Number(p.diaBase) || undefined);
+    tx.set(egresoRef, {
+      fecha: datos.fecha,
+      categoria: p.categoria ?? 'otro',
+      beneficiario: p.beneficiario ?? '',
+      concepto: p.concepto,
+      metodo: datos.metodo ?? p.metodo ?? 'efectivo',
+      comprobante: datos.comprobante,
+      monto: datos.monto ?? p.monto,
+      pagoRecurrenteId: ref.id,
+      creadoPor: req.usuario!.email,
+      creadoEn: FieldValue.serverTimestamp(),
+      actualizadoEn: FieldValue.serverTimestamp(),
+    });
+    tx.update(ref, {
+      proximaFecha,
+      ultimoPago: datos.fecha,
+      actualizadoPor: req.usuario!.email,
+      actualizadoEn: FieldValue.serverTimestamp(),
+    });
+    return { egresoId: egresoRef.id, proximaFecha };
+  });
+  res.status(201).json(resultado);
+});
+
+modulos.use(
+  '/pagos-recurrentes',
+  crearCrud({
+    coleccion: 'pagosRecurrentes',
+    leer: 'tesoreria',
+    escribir: 'tesoreria',
+    borrar: 'tesoreria',
+    esquema: z.object({
+      concepto: requerido(200),
+      beneficiario: texto(120),
+      categoria: categoriaEgreso,
+      metodo: metodoPago,
+      monto,
+      frecuencia: opcion([...FRECUENCIAS], 'mensual'),
+      proximaFecha: fecha,
+      diasAviso: z.coerce.number().int().min(0).max(90).optional().default(5),
+      activo: z.boolean().optional().default(true),
+      notas: texto(500),
+    }),
+    preparar: (datos) => ({ ...datos, diaBase: Number(String(datos.proximaFecha).slice(8, 10)) }),
   }),
 );
 
@@ -295,9 +451,9 @@ modulos.use(
   '/presupuestos',
   crearCrud({
     coleccion: 'presupuestos',
-    leer: ADMIN,
-    escribir: ADMIN,
-    borrar: ADMIN,
+    leer: 'tesoreria',
+    escribir: 'tesoreria',
+    borrar: 'tesoreria',
     esquema: z.object({
       anio: z.coerce.number().int().min(2000).max(2100),
       mes: z.coerce.number().int().min(0).max(12).optional().default(0), // 0 = todo el año
@@ -310,14 +466,14 @@ modulos.use(
 );
 
 // ═════════ Ventas ═════════
-// Catálogo de productos: lo gestionan los administradores; todos lo usan al vender.
+// Catálogo de productos: lo gestiona quien tenga el permiso "ventas"; todos lo usan al vender.
 modulos.use(
   '/productos',
   crearCrud({
     coleccion: 'productos',
     leer: TODOS,
-    escribir: ADMIN,
-    borrar: ADMIN,
+    escribir: 'ventas',
+    borrar: 'ventas',
     esquema: z.object({
       nombre: requerido(120),
       precio: monto,
@@ -327,6 +483,8 @@ modulos.use(
   }),
 );
 
+// El PRECIO no lo decide quien vende: se toma del producto registrado al momento de la venta
+// y ya no cambia (aunque después se edite la venta o el precio del producto).
 modulos.use(
   '/ventas',
   crearCrud({
@@ -334,21 +492,43 @@ modulos.use(
     campoFecha: 'fecha',
     leer: TODOS,
     escribir: TODOS,
-    borrar: ADMIN,
+    editar: 'ventas',
+    borrar: 'ventas',
+    // El cuadre de caja (todas las ventas) lo ve quien tiene "cuadre", "ventas" o "tesoreria"; el resto solo ve lo que registró.
+    alcance: async (req) => {
+      const { permisos } = await contexto(req);
+      if (['cuadre', 'ventas', 'tesoreria'].some((p) => permisos.includes(p as never))) return null;
+      return (item) => item.creadoPor === req.usuario!.email;
+    },
     esquema: z.object({
       fecha,
-      productoId: texto(100),
-      producto: requerido(120), // nombre guardado al momento de la venta (por si el producto cambia después)
+      productoId: requerido(100),
       cantidad: z.coerce.number().int().min(1, 'Mínimo 1'),
-      precioUnitario: monto,
       comprador: texto(120),
       metodoPago: z.enum(['qr', 'efectivo']),
       referencia: texto(80),
       notas: texto(500),
     }),
-    preparar: (datos) => ({
-      ...datos,
-      total: Math.round(Number(datos.cantidad) * Number(datos.precioUnitario) * 100) / 100,
-    }),
+    preparar: async (datos, _req, esNuevo, previo) => {
+      let producto: string;
+      let precioUnitario: number;
+      if (esNuevo) {
+        const p = (await db.collection('productos').doc(String(datos.productoId)).get()).data();
+        if (!p || p.activo === false) throw new HttpError(400, 'El producto no existe o no está disponible');
+        producto = String(p.nombre);
+        precioUnitario = Number(p.precio);
+      } else {
+        // Al editar se conservan el producto y el precio con los que se registró.
+        producto = String(previo!.producto);
+        precioUnitario = Number(previo!.precioUnitario);
+        datos = { ...datos, productoId: previo!.productoId ?? '' };
+      }
+      return {
+        ...datos,
+        producto,
+        precioUnitario,
+        total: Math.round(Number(datos.cantidad) * precioUnitario * 100) / 100,
+      };
+    },
   }),
 );

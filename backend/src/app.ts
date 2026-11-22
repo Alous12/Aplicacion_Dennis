@@ -5,7 +5,8 @@ import { requiereAuth } from './lib/auth';
 import { HttpError, manejadorErrores } from './lib/errores';
 import { errorConfiguracion } from './lib/firebase';
 import { auth } from './routes/auth';
-import { configuracion } from './routes/configuracion';
+import { categoriasRouter } from './routes/categorias';
+import { configuracion, configuracionPublica } from './routes/configuracion';
 import { modulos } from './routes/modulos';
 import { usuariosRouter } from './routes/usuarios';
 
@@ -30,8 +31,10 @@ api.use((_req, _res, next) => {
   next();
 });
 api.use('/auth', auth);
+api.use('/configuracion', configuracionPublica); // logo y nombre (visibles en la pantalla de ingreso)
 api.use(requiereAuth); // todo lo que sigue requiere JWT
 api.use('/usuarios', usuariosRouter);
+api.use('/categorias', categoriasRouter);
 api.use('/configuracion', configuracion);
 api.use(modulos);
 
