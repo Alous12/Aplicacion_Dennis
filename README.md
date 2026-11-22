@@ -78,7 +78,7 @@ Los admins **no** se pueden crear desde la web:
 
 ```bash
 cd backend
-npm run crear-admin -- --email pastor@iglesia.com --nombre "Pastor Juan" --password "UnaClaveSegura123"
+npm run crear-admin pastor@iglesia.com "Pastor Juan" "UnaClaveSegura123"
 ```
 
 Sin `--password` el admin entra solo con Google (mismo correo).

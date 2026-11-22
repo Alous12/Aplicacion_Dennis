@@ -5,12 +5,12 @@
  */
 export const environment = {
   apiUrl: '/api',
-  nombreIglesia: 'Mi Iglesia',
+  nombreIglesia: 'CDF-Cochambamba',
   moneda: { codigo: 'BOB', locale: 'es-BO' },
   firebase: {
-    apiKey: 'TU_API_KEY',
-    authDomain: 'tu-proyecto.firebaseapp.com',
-    projectId: 'tu-proyecto',
-    appId: 'TU_APP_ID',
+    apiKey: "AIzaSyDNTpV1KfByuFC5ET5MKIde6Ub1sVdtxv8",
+    authDomain: "iglesia-gestion-8edbc.firebaseapp.com",
+    projectId: "iglesia-gestion-8edbc",
+    appId: "1:900319620748:web:53c3871afc799ff48e95a9",
   },
 };
