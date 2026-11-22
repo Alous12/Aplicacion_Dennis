@@ -1,0 +1,35 @@
+# Un solo sitio de Netlify sirve el frontend (Angular) y el backend (Netlify Functions).
+[build]
+  base = "."
+  command = "npm --prefix backend ci && npm --prefix frontend ci && npm --prefix frontend run build"
+  publish = "frontend/dist/frontend/browser"
+  functions = "backend/netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  node_bundler = "esbuild"
+  # firebase-admin se incluye como dependencia normal (no se empaqueta con esbuild)
+  external_node_modules = ["firebase-admin"]
+
+# La API Express vive en una sola función: /api/* -> /.netlify/functions/api/*
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+# SPA: cualquier otra ruta la resuelve Angular
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # Necesario para que el popup de Google (Firebase Auth) pueda comunicarse con la página
+    Cross-Origin-Opener-Policy = "same-origin-allow-popups"

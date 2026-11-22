@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.angular/
+.netlify/
+.env
+*.local
+# Nunca subas la clave de la cuenta de servicio
+*service-account*.json
+*firebase-adminsdk*.json
