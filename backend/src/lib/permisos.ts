@@ -3,8 +3,9 @@ import { HttpError } from './errores';
 import { db } from './firebase';
 
 /**
- * Permisos que el administrador asigna a cada categoría (rol) en "Roles y permisos".
- * Un usuario recibe los permisos de su categoría. El administrador (rol "admin") los tiene todos.
+ * Permisos que el administrador asigna A CADA USUARIO en "Usuarios → Configurar permisos".
+ * La categoría (Pastor, Diácono, Líder…) es solo un identificador y no da permisos.
+ * El administrador (rol "admin") los tiene todos.
  * Debe coincidir con frontend/src/app/core/permisos.ts
  */
 export const PERMISOS = [
@@ -43,10 +44,9 @@ declare global {
   }
 }
 
-// ───────── Caché corta de categorías (evita leerlas en cada petición) ─────────
+// ───────── Caché corta de los nombres de categorías (evita leerlas en cada petición) ─────────
 interface Categoria {
   nombre: string;
-  permisos: Permiso[];
 }
 let cacheCategorias: { datos: Map<string, Categoria>; vence: number } | null = null;
 
@@ -60,7 +60,7 @@ export async function categorias(): Promise<Map<string, Categoria>> {
   const datos = new Map<string, Categoria>();
   for (const d of snap.docs) {
     const c = d.data();
-    datos.set(d.id, { nombre: String(c.nombre ?? ''), permisos: ((c.permisos as unknown[]) ?? []).filter(esPermiso) });
+    datos.set(d.id, { nombre: String(c.nombre ?? '') });
   }
   cacheCategorias = { datos, vence: Date.now() + 30_000 };
   return datos;
@@ -73,13 +73,14 @@ export async function contextoDe(sub: string): Promise<ContextoUsuario> {
   const esAdmin = activo && u?.rol === 'admin';
   const categoriaId = String(u?.categoriaId ?? '');
   const categoria = categoriaId ? (await categorias()).get(categoriaId) : undefined;
+  const propios = ((u?.permisos as unknown[]) ?? []).filter(esPermiso);
   return {
     rol: esAdmin ? 'admin' : 'usuario',
     esAdmin,
     celulaId: String(u?.celulaId ?? ''),
     categoriaId,
     categoria: categoria?.nombre ?? '',
-    permisos: esAdmin ? [...PERMISOS] : activo ? (categoria?.permisos ?? []) : [],
+    permisos: esAdmin ? [...PERMISOS] : activo ? propios : [],
   };
 }
 

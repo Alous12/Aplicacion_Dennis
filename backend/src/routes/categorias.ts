@@ -3,25 +3,18 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import { HttpError } from '../lib/errores';
 import { db } from '../lib/firebase';
-import { invalidarCategorias, PERMISOS, requiereAdmin, type Permiso } from '../lib/permisos';
+import { invalidarCategorias, requiere } from '../lib/permisos';
 
 /**
- * Categorías (roles) de los integrantes: Pastor, Anciano, Diácono, Líder…
- * El administrador crea las que quiera (p. ej. "Subadmin") y en un panel marca qué puede controlar cada una.
- * Cada usuario tiene una categoría y recibe sus permisos.
+ * Categorías de los integrantes (Pastor, Anciano, Diácono, Líder…).
+ * Son solo un IDENTIFICADOR: no dan permisos. Los permisos se configuran a cada usuario.
+ * Se gestionan desde la página Usuarios (permiso "usuarios").
  */
 export const categoriasRouter = Router();
 const col = db.collection('categorias');
 
-/** Categorías iniciales (las del diagrama). Se crean una sola vez; luego el admin las ajusta. */
-const INICIALES: { nombre: string; permisos: Permiso[]; descripcion: string }[] = [
-  { nombre: 'Pastor', permisos: [...PERMISOS], descripcion: 'Acceso a todos los módulos.' },
-  { nombre: 'Anciano', permisos: [], descripcion: '' },
-  { nombre: 'Ministro', permisos: [], descripcion: '' },
-  { nombre: 'Diácono', permisos: [], descripcion: '' },
-  { nombre: 'Líder', permisos: ['hogar'], descripcion: 'Registra la asistencia y los ingresos de su iglesia en el hogar.' },
-  { nombre: 'Sub líder', permisos: ['hogar'], descripcion: 'Ayuda al líder con la asistencia y los ingresos de su iglesia en el hogar.' },
-];
+/** Categorías iniciales (las del diagrama). Se crean una sola vez; luego se pueden cambiar. */
+const INICIALES = ['Pastor', 'Anciano', 'Ministro', 'Diácono', 'Líder', 'Sub líder'];
 
 let sembrado = false;
 async function sembrarSiHaceFalta() {
@@ -30,8 +23,8 @@ async function sembrarSiHaceFalta() {
   await db.runTransaction(async (tx) => {
     const m = await tx.get(marca);
     if (m.data()?.categorias) return;
-    INICIALES.forEach((c, orden) =>
-      tx.set(col.doc(), { ...c, orden, creadoPor: 'sistema', creadoEn: FieldValue.serverTimestamp() }),
+    INICIALES.forEach((nombre, orden) =>
+      tx.set(col.doc(), { nombre, orden, creadoPor: 'sistema', creadoEn: FieldValue.serverTimestamp() }),
     );
     tx.set(marca, { categorias: true }, { merge: true });
   });
@@ -41,20 +34,15 @@ async function sembrarSiHaceFalta() {
 
 const esquema = z.object({
   nombre: z.string().trim().min(2, 'Nombre muy corto').max(60),
-  descripcion: z.string().trim().max(300).optional().default(''),
-  permisos: z.array(z.enum(PERMISOS)).max(PERMISOS.length).optional().default([]),
   orden: z.coerce.number().int().min(0).max(999).optional(),
 });
 
-// Todos los usuarios pueden ver las categorías (se muestran en perfiles y listas).
+// Todos los usuarios pueden verlas (se muestran en perfiles y listas).
 categoriasRouter.get('/', async (_req, res) => {
   await sembrarSiHaceFalta();
   const snap = await col.get();
-  const lista = snap.docs.map((d) => {
-    const c = d.data();
-    return { id: d.id, nombre: c.nombre, descripcion: c.descripcion ?? '', permisos: c.permisos ?? [], orden: c.orden ?? 999 };
-  });
-  lista.sort((a, b) => a.orden - b.orden || String(a.nombre).localeCompare(String(b.nombre)));
+  const lista = snap.docs.map((d) => ({ id: d.id, nombre: String(d.data().nombre ?? ''), orden: Number(d.data().orden ?? 999) }));
+  lista.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre));
   res.json(lista);
 });
 
@@ -64,20 +52,15 @@ async function nombreLibre(nombre: string, excepto?: string) {
   if (repetido) throw new HttpError(409, `Ya existe una categoría llamada "${nombre}"`);
 }
 
-categoriasRouter.post('/', requiereAdmin, async (req, res) => {
+categoriasRouter.post('/', requiere('usuarios'), async (req, res) => {
   const datos = esquema.parse(req.body);
   await nombreLibre(datos.nombre);
-  const ref = await col.add({
-    ...datos,
-    orden: datos.orden ?? 999,
-    creadoPor: req.usuario!.email,
-    creadoEn: FieldValue.serverTimestamp(),
-  });
+  const ref = await col.add({ ...datos, orden: datos.orden ?? 999, creadoPor: req.usuario!.email, creadoEn: FieldValue.serverTimestamp() });
   invalidarCategorias();
-  res.status(201).json({ id: ref.id, ...datos });
+  res.status(201).json({ id: ref.id, nombre: datos.nombre, orden: datos.orden ?? 999 });
 });
 
-categoriasRouter.put('/:id', requiereAdmin, async (req, res) => {
+categoriasRouter.put('/:id', requiere('usuarios'), async (req, res) => {
   const ref = col.doc(String(req.params.id));
   if (!(await ref.get()).exists) throw new HttpError(404, 'Categoría no encontrada');
   const datos = esquema.parse(req.body);
@@ -88,7 +71,7 @@ categoriasRouter.put('/:id', requiereAdmin, async (req, res) => {
   res.json({ id: ref.id, ...datos });
 });
 
-categoriasRouter.delete('/:id', requiereAdmin, async (req, res) => {
+categoriasRouter.delete('/:id', requiere('usuarios'), async (req, res) => {
   const id = String(req.params.id);
   const enUso = await db.collection('usuarios').where('categoriaId', '==', id).get();
   if (!enUso.empty) {
