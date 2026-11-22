@@ -3,32 +3,43 @@
  * Los administradores no se pueden crear desde la web: solo con este script
  * o editando la colección "usuarios" en la consola de Firebase.
  *
- * Uso:
- *   npm run crear-admin -- --email pastor@iglesia.com --nombre "Pastor Juan" --password "ClaveSegura123"
+ * Uso (funciona igual en PowerShell, CMD y bash):
+ *   npm run crear-admin pastor@iglesia.com "Pastor Juan" "ClaveSegura123"
  *
- * --password es opcional: sin él, el admin solo podrá entrar con Google (mismo correo).
+ * También con etiquetas, llamando al script directamente:
+ *   npx tsx scripts/crear-admin.ts --email pastor@iglesia.com --nombre "Pastor Juan" --password "ClaveSegura123"
+ *
+ * La contraseña es opcional: sin ella, el admin solo podrá entrar con Google (mismo correo).
  */
 import bcrypt from 'bcryptjs';
 import { FieldValue } from 'firebase-admin/firestore';
 import { parseArgs } from 'node:util';
-import { db } from '../src/lib/firebase';
 
-const { values } = parseArgs({
+const { values: etiquetas, positionals } = parseArgs({
+  allowPositionals: true,
   options: {
     email: { type: 'string' },
     nombre: { type: 'string' },
     password: { type: 'string' },
   },
 });
+const values = {
+  email: etiquetas.email ?? positionals[0],
+  nombre: etiquetas.nombre ?? positionals[1],
+  password: etiquetas.password ?? positionals[2],
+};
 
-if (!values.email || !values.nombre) {
-  console.error('Uso: npm run crear-admin -- --email correo@x.com --nombre "Nombre" [--password "clave"]');
+if (!values.email || !values.nombre || !values.email.includes('@')) {
+  console.error('Uso: npm run crear-admin correo@x.com "Nombre Apellido" "contraseña"');
   process.exit(1);
 }
 if (values.password && values.password.length < 8) {
   console.error('La contraseña debe tener al menos 8 caracteres');
   process.exit(1);
 }
+
+// Se importa después de validar para no conectar a Firebase si los argumentos están mal.
+const { db } = await import('../src/lib/firebase');
 
 const id = values.email.trim().toLowerCase();
 const datos: Record<string, unknown> = {
