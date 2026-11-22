@@ -4,13 +4,13 @@ Aplicación web responsive (pensada primero para teléfono) con los módulos del
 
 | Módulo | Qué incluye |
 |---|---|
-| **Miembros & Visitantes** | Registro de personas, flujo (registro → bautismo/discipulado → integración a célula / seguimiento de visitante → invitación a actividades), células, **cumpleaños** (por mes, próximos 30 días, felicitar por WhatsApp) |
+| **Miembros & Visitantes** | Registro de personas, flujo (registro → bautismo/discipulado → integración a iglesia en el hogar / seguimiento de visitante → invitación a actividades), **iglesias en el hogar** con **control de asistencia** (y "añadir a alguien más" en el momento), **cumpleaños** (por mes, próximos 30 días, felicitar por WhatsApp) |
 | **Eventos & Cultos** | Planificación, calendario, publicación (WhatsApp / copiar texto para redes), inscripción con cupo, registro de asistencia, voluntarios asignados, evaluación |
 | **Ministerios & Voluntarios** | Necesidades y convocatoria por ministerio; solicitudes → revisión de perfil → selección → capacitación → activo; coordinación en eventos; feedback y reconocimiento |
 | **Gestión de Recursos** | Inventario (insumos/equipos), espacios, reservas de aulas, mantenimiento |
-| **Tesorería** | Ofrendas/diezmos (culto, online, **por célula**), recibos/constancias numerados e imprimibles, pagos (proveedores, nómina, gastos), registro contable con saldo, presupuesto, reportes financieros. Los **líderes de célula** registran los ingresos de su propia célula. |
-| **Ventas** | Catálogo de **productos** (lo gestiona el admin), imagen del QR de cobro (la sube el admin), registro de ventas eligiendo **QR o efectivo** (con cálculo de cambio), reporte por periodo para **imprimir / guardar PDF / CSV** |
-| **Administración** | Aprobar / desactivar usuarios y asignar **líderes de célula**. **Los administradores solo se crean en la base de datos.** |
+| **Tesorería** | Ofrendas/diezmos (culto, online, **por iglesia en el hogar**; se preselecciona la de quien registra), recibos numerados e imprimibles, pagos, **pagos recurrentes** con cuenta regresiva y aviso en Inicio, registro contable con saldo, presupuesto, reportes financieros. Los líderes registran los ingresos de su propia iglesia en el hogar. |
+| **Ventas** | Catálogo de **productos**, imagen del QR de cobro, registro de ventas eligiendo **QR o efectivo** (con cálculo de cambio). El **precio no se puede modificar**: lo fija el producto registrado. **Cuadre de caja** por día/periodo (QR, efectivo y por persona) para imprimir / PDF / CSV |
+| **Administración** | El admin **crea usuarios con contraseña** (o aprueba los que se registran solos), define **roles y permisos** y sube el **logo**. **Los administradores solo se crean en la base de datos.** |
 
 ## Arquitectura
 
@@ -25,21 +25,29 @@ Dennis/
 - **Autenticación:** JWT propio (firmado por el backend, 12 h).
   - Correo + contraseña (bcrypt).
   - Google: el frontend abre el popup de Google con Firebase Auth, envía el ID token al backend, que lo verifica y entrega el JWT de la app.
-- **Roles:** `admin` y `usuario`. Las cuentas nuevas (correo o Google) quedan **pendientes** hasta que un admin las aprueba. Desde la web no se pueden crear admins ni cambiar roles.
+- **Roles:** el `admin` (solo en la base de datos) controla todo. Los demás usuarios tienen una **categoría** (Pastor, Anciano, Ministro, Diácono, Líder, Sub líder o las que cree el admin, p. ej. "Subadmin") y reciben **sus permisos**. Las cuentas que se registran solas (correo o Google) quedan **pendientes** hasta que se aprueban.
 
-### Permisos por defecto
+### Roles y permisos
 
-| Módulo | usuario | líder de célula | admin |
-|---|---|---|---|
-| Personas, eventos, voluntarios, reservas, mantenimiento, ventas | ver, crear, editar | igual que usuario | todo |
-| Células, ministerios, inventario, espacios, productos, imagen del QR | solo ver | solo ver | todo |
-| Ingresos de **su** célula | sin acceso | ver, registrar, imprimir recibo | todo |
-| Resto de Tesorería, usuarios | sin acceso | sin acceso | todo |
-| Eliminar registros | solo reservas de espacios | solo reservas de espacios | todo |
+En **Administración → Roles y permisos** el admin crea categorías y marca qué controla cada una:
 
-Un líder de célula es un usuario normal al que un admin le asigna una célula en **Usuarios**. El cambio aplica al instante.
+| Permiso | Qué permite |
+|---|---|
+| Personas e iglesias en el hogar | Eliminar personas, crear/editar iglesias en el hogar, asistencia de todas |
+| Su iglesia en el hogar | Asistencia e ingresos de la iglesia en el hogar asignada (Líder y Sub líder lo traen por defecto) |
+| Eventos y cultos | Eliminar eventos |
+| Ministerios y voluntarios | Gestionar ministerios, eliminar voluntarios |
+| Recursos | Inventario, espacios, eliminar mantenimientos |
+| Tesorería | Toda la tesorería |
+| Ventas y productos | Productos y precios, imagen del QR, editar/eliminar ventas |
+| Cuadre de caja | Ver todas las ventas de cada día (QR, efectivo y por persona) |
+| Usuarios | Crear cuentas, aprobarlas, cambiar contraseñas, asignar iglesia en el hogar |
 
-Se cambian en `backend/src/routes/modulos.ts` **y** `frontend/src/app/modulos.config.ts` (deben coincidir).
+- **Funciones básicas** (todos los usuarios aprobados): ver la información y registrar personas, eventos, voluntarios, reservas, mantenimientos y ventas (cada vendedor ve solo sus ventas).
+- Solo el admin asigna categorías y edita roles, así nadie puede darse más permisos. Quien tiene "Usuarios" no puede modificar a usuarios con permisos.
+- Los cambios de permisos aplican **al instante** (el backend los lee de la base en cada petición).
+- La lista de permisos está en `backend/src/lib/permisos.ts` y `frontend/src/app/core/permisos.ts` (deben coincidir).
+
 
 ---
 
@@ -101,4 +109,4 @@ También puedes crearlo a mano en la consola de Firestore: colección `usuarios`
 
 ## Moneda y nombre
 
-En `frontend/src/environments/environment.ts`: `nombreIglesia` y `moneda` (por defecto `BOB` / `es-BO`).
+El **logo** y el **nombre** se cambian desde la app: **Administración → Configuración** (solo admin). El nombre por defecto y la `moneda` (`BOB` / `es-BO`) están en `frontend/src/environments/environment.ts`.

@@ -166,11 +166,9 @@ export class CrudPagina {
   borrador: Record<string, any> = {};
 
   readonly colorModulo = computed(() => `var(--c-${this.config().modulo})`);
-  readonly puedeEscribir = computed(() => this.config().escribir.includes(this.auth.usuario()?.rol ?? ('' as never)));
-  readonly puedeEditar = computed(() =>
-    (this.config().editar ?? this.config().escribir).includes(this.auth.usuario()?.rol ?? ('' as never)),
-  );
-  readonly puedeBorrar = computed(() => this.config().borrar.includes(this.auth.usuario()?.rol ?? ('' as never)));
+  readonly puedeEscribir = computed(() => this.auth.puede(this.config().escribir));
+  readonly puedeEditar = computed(() => this.auth.puede(this.config().editar ?? this.config().escribir));
+  readonly puedeBorrar = computed(() => this.auth.puede(this.config().borrar));
   readonly columnas = computed(() => this.config().campos.filter((c) => c.enTabla));
   readonly camposFiltro = computed(() => this.config().campos.filter((c) => c.filtro));
 
@@ -275,6 +273,8 @@ export class CrudPagina {
     for (const c of this.config().campos) {
       const d = typeof c.defecto === 'function' ? (c.defecto as () => unknown)() : c.defecto;
       b[c.clave] = d ?? (c.tipo === 'booleano' ? false : c.tipo === 'select' ? (c.opciones?.[0]?.valor ?? '') : '');
+      // La iglesia en el hogar se preselecciona con la de quien está registrando.
+      if (c.relacion === 'celulas' && !b[c.clave]) b[c.clave] = this.auth.usuario()?.celulaId ?? '';
     }
     this.borrador = b;
     this.modalAbierto.set(true);

@@ -45,6 +45,9 @@ export class ApiService {
   get<T>(ruta: string): Promise<T> {
     return firstValueFrom(this.http.get<T>(`${this.base}/${ruta}`));
   }
+  post<T>(ruta: string, datos: unknown): Promise<T> {
+    return firstValueFrom(this.http.post<T>(`${this.base}/${ruta}`, datos));
+  }
   put<T>(ruta: string, datos: unknown): Promise<T> {
     return firstValueFrom(this.http.put<T>(`${this.base}/${ruta}`, datos));
   }

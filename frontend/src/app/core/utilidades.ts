@@ -26,6 +26,19 @@ export function deISO(iso: string): Date {
   return new Date(a, (m || 1) - 1, d || 1);
 }
 
+/** Días que faltan desde hoy hasta la fecha (negativo = ya pasó). */
+export function diasHasta(iso: string): number {
+  return Math.round((deISO(iso).getTime() - deISO(hoy()).getTime()) / 86_400_000);
+}
+
+/** "Vence hoy", "Faltan 3 días", "Vencido hace 2 días"... */
+export function textoDias(dias: number): string {
+  if (dias === 0) return 'Vence hoy';
+  if (dias === 1) return 'Vence mañana';
+  if (dias > 1) return `Faltan ${dias} días`;
+  return `Vencido hace ${-dias} día${dias === -1 ? '' : 's'}`;
+}
+
 export function fechaLarga(iso?: string): string {
   if (!iso) return '';
   return deISO(iso).toLocaleDateString('es', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
@@ -88,7 +101,8 @@ export function descargarCSV(nombreArchivo: string, filas: (string | number)[][]
 }
 
 /** Reduce una imagen (p. ej. el QR) y la devuelve como data URL comprimida. */
-export function comprimirImagen(archivo: File, ladoMax = 800, calidad = 0.85): Promise<string> {
+/** Reduce una imagen y la devuelve como data URL. `transparente` conserva el fondo transparente (logos). */
+export function comprimirImagen(archivo: File, ladoMax = 800, calidad = 0.85, transparente = false): Promise<string> {
   return new Promise((resolve, reject) => {
     const lector = new FileReader();
     lector.onerror = () => reject(new Error('No se pudo leer la imagen'));
@@ -101,12 +115,14 @@ export function comprimirImagen(archivo: File, ladoMax = 800, calidad = 0.85): P
         canvas.width = Math.round(img.width * escala);
         canvas.height = Math.round(img.height * escala);
         const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (!transparente) {
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         // PNG mantiene nítidos los QR; si pesa mucho se usa JPEG.
         let data = canvas.toDataURL('image/png');
-        if (data.length > 600_000) data = canvas.toDataURL('image/jpeg', calidad);
+        if (data.length > 300_000) data = canvas.toDataURL(transparente ? 'image/webp' : 'image/jpeg', calidad);
         resolve(data);
       };
       img.src = lector.result as string;

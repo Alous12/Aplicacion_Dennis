@@ -1,8 +1,8 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { environment } from '../../environments/environment';
 import { mensajeError } from '../core/auth.interceptor';
+import { ConfigService } from '../core/config.service';
 import { AuthService } from '../core/auth.service';
 
 @Component({
@@ -12,8 +12,12 @@ import { AuthService } from '../core/auth.service';
     <main class="fondo">
       <section class="caja">
         <div class="logo">
-          <span class="icono">church</span>
-          <h1>{{ nombreIglesia }}</h1>
+          @if (config.logo()) {
+            <img class="logo-img" [src]="config.logo()" alt="Logo" />
+          } @else {
+            <span class="icono">church</span>
+          }
+          <h1>{{ config.nombre() }}</h1>
           <p>Sistema de gestión integral</p>
         </div>
 
@@ -104,6 +108,12 @@ import { AuthService } from '../core/auth.service';
         font-size: 48px;
         color: var(--primario);
       }
+      .logo-img {
+        width: 88px;
+        height: 88px;
+        object-fit: contain;
+        border-radius: 16px;
+      }
       h1 {
         font-size: 1.4rem;
         margin-top: 4px;
@@ -164,7 +174,7 @@ export class Login {
   private auth = inject(AuthService);
   private router = inject(Router);
 
-  readonly nombreIglesia = environment.nombreIglesia;
+  readonly config = inject(ConfigService);
   readonly modo = signal<'login' | 'registro'>('login');
   readonly cargando = signal(false);
   readonly mensaje = signal('');

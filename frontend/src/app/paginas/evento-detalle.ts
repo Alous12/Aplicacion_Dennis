@@ -40,7 +40,7 @@ const PASOS = ['planificado', 'publicado', 'realizado', 'evaluado'];
           </div>
           <div class="acciones">
             <button class="btn" type="button" (click)="editar()"><span class="icono">edit</span> Editar</button>
-            @if (auth.esAdmin()) {
+            @if (auth.puede('eventos')) {
               <button class="btn btn-peligro" type="button" (click)="eliminar()"><span class="icono">delete</span></button>
             }
           </div>

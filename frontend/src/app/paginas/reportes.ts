@@ -1,7 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { environment } from '../../environments/environment';
 import { mensajeError } from '../core/auth.interceptor';
+import { ConfigService } from '../core/config.service';
 import { ApiService } from '../core/api.service';
 import type { Opcion, Registro } from '../core/modelos';
 import { NotificacionesService } from '../core/notificaciones.service';
@@ -37,7 +37,7 @@ const etiquetaDe = (lista: Opcion[]) => (v: string) => lista.find((o) => o.valor
       <div class="pagina-encabezado">
         <div>
           <h1><span class="icono">bar_chart</span>Reportes financieros</h1>
-          <p>{{ nombreIglesia }} · {{ periodoTexto() }}</p>
+          <p>{{ config.nombre() }} · {{ periodoTexto() }}</p>
         </div>
         <div class="acciones no-imprimir">
           <button class="btn" type="button" (click)="imprimir()"><span class="icono">print</span> Imprimir / PDF</button>
@@ -190,7 +190,7 @@ export class Reportes {
   private api = inject(ApiService);
   private notif = inject(NotificacionesService);
 
-  readonly nombreIglesia = environment.nombreIglesia;
+  readonly config = inject(ConfigService);
   readonly moneda = moneda;
   readonly meses = MESES;
   readonly anios = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i);
@@ -251,10 +251,10 @@ export class Reportes {
       { titulo: 'Ingresos por tipo', icono: 'savings', tipo: 'ingreso', filas: conPresupuesto(agrupar(p.ingresos, 'tipo', 'monto', etiquetaDe(TIPO_INGRESO))) },
       { titulo: 'Ingresos por origen', icono: 'call_split', tipo: 'ingreso', filas: agrupar(p.ingresos, 'origen', 'monto', etiquetaDe(ORIGEN_INGRESO)) },
       {
-        titulo: 'Ingresos por célula',
+        titulo: 'Ingresos por iglesia en el hogar',
         icono: 'diversity_3',
         tipo: 'ingreso',
-        filas: agrupar(ingresosCelula, 'celulaId', 'monto', (id) => celulas.find((c) => c.id === id)?.['nombre'] ?? 'Sin célula'),
+        filas: agrupar(ingresosCelula, 'celulaId', 'monto', (id) => celulas.find((c) => c.id === id)?.['nombre'] ?? 'Sin iglesia en el hogar'),
       },
       { titulo: 'Pagos por categoría', icono: 'payments', tipo: 'egreso', filas: conPresupuesto(agrupar(p.egresos, 'categoria', 'monto', etiquetaDe(CATEGORIA_EGRESO))) },
       {

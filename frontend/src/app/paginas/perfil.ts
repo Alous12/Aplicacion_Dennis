@@ -1,7 +1,9 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { mensajeError } from '../core/auth.interceptor';
+import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
+import { etiquetaPermiso } from '../core/permisos';
 import { NotificacionesService } from '../core/notificaciones.service';
 
 @Component({
@@ -17,8 +19,19 @@ import { NotificacionesService } from '../core/notificaciones.service';
         <ul class="lista-simple">
           <li><span class="texto-2">Nombre</span><strong>{{ auth.usuario()?.nombre }}</strong></li>
           <li><span class="texto-2">Correo</span><strong>{{ auth.usuario()?.email }}</strong></li>
-          <li><span class="texto-2">Rol</span><strong>{{ auth.esAdmin() ? 'Administrador' : 'Usuario' }}</strong></li>
+          <li><span class="texto-2">Rol / categoría</span><strong>{{ auth.rolTexto() }}</strong></li>
+          <li><span class="texto-2">Iglesia en el hogar</span><strong>{{ hogar() || 'Sin asignar' }}</strong></li>
         </ul>
+        <div class="mt">
+          <span class="texto-2 pequeno">Puedes administrar:</span>
+          <div class="chips" style="margin-top: 6px">
+            @for (p of auth.usuario()?.permisos ?? []; track p) {
+              <span class="insignia azul">{{ etiqueta(p) }}</span>
+            } @empty {
+              <span class="texto-2 pequeno">Solo las funciones básicas (registrar personas, eventos, ventas...).</span>
+            }
+          </div>
+        </div>
       </section>
 
       <section class="tarjeta mb">
@@ -46,7 +59,19 @@ export class Perfil {
   readonly auth = inject(AuthService);
   private notif = inject(NotificacionesService);
   readonly guardando = signal(false);
+  readonly hogar = signal('');
+  readonly etiqueta = etiquetaPermiso;
   actual = '';
+
+  constructor() {
+    const id = this.auth.usuario()?.celulaId;
+    if (id) {
+      inject(ApiService)
+        .listar('celulas', {}, true)
+        .then((l) => this.hogar.set(String(l.find((c) => c.id === id)?.['nombre'] ?? '')))
+        .catch(() => {});
+    }
+  }
   nueva = '';
 
   async cambiar(invalido: boolean | null) {

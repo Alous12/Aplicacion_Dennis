@@ -1,3 +1,5 @@
+import type { Permiso } from './permisos';
+
 export type Rol = 'admin' | 'usuario';
 
 export interface Usuario {
@@ -5,8 +7,12 @@ export interface Usuario {
   email: string;
   nombre: string;
   rol: Rol;
-  /** Célula que lidera (asignada por un admin). Vacío = no es líder. */
+  /** Iglesia en el hogar asignada. */
   celulaId?: string;
+  /** Categoría (rol) asignada por el admin; define los permisos. */
+  categoriaId?: string;
+  categoria?: string;
+  permisos?: Permiso[];
 }
 
 export interface Sesion {

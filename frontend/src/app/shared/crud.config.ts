@@ -1,4 +1,5 @@
-import type { Opcion, Registro, Rol } from '../core/modelos';
+import type { Opcion, Registro } from '../core/modelos';
+import type { Acceso } from '../core/permisos';
 
 export type TipoCampo =
   | 'texto'
@@ -54,11 +55,11 @@ export interface ConfigCrud {
   campos: Campo[];
   /** Campo que se muestra como título de la tarjeta en el teléfono. */
   campoPrincipal: string;
-  /** Roles que pueden crear/editar y borrar (debe coincidir con el backend). */
-  escribir: Rol[];
-  /** Roles que pueden editar (por defecto, los mismos que crean). */
-  editar?: Rol[];
-  borrar: Rol[];
+  /** Quién puede crear y borrar: 'todos' o un permiso (debe coincidir con el backend). */
+  escribir: Acceso;
+  /** Quién puede editar (por defecto, quien puede crear). */
+  editar?: Acceso;
+  borrar: Acceso;
   /** Habilita el filtro por rango de fechas (?desde=&hasta=). */
   filtroFecha?: boolean;
   /** Campo numérico a totalizar al pie de la tabla. */

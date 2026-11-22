@@ -1,8 +1,8 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
-import { environment } from '../../environments/environment';
 import { AuthService } from '../core/auth.service';
+import { ConfigService } from '../core/config.service';
 
 interface ItemMenu {
   ruta: string;
@@ -10,7 +10,9 @@ interface ItemMenu {
   icono: string;
   color: string;
   /** Quién ve el enlace (por defecto, todos). */
-  visible?: 'admin' | 'lider';
+  visible?: (auth: AuthService) => boolean;
+  /** Marcar activo solo con la ruta exacta (cuando otra opción del menú cuelga de esta). */
+  exacto?: boolean;
 }
 
 interface SeccionMenu {
@@ -28,7 +30,14 @@ const MENU: SeccionMenu[] = [
     items: [
       { ruta: '/personas', etiqueta: 'Personas', icono: 'groups', color: 'var(--c-miembros)' },
       { ruta: '/cumpleanos', etiqueta: 'Cumpleaños', icono: 'cake', color: 'var(--c-miembros)' },
-      { ruta: '/celulas', etiqueta: 'Células', icono: 'diversity_3', color: 'var(--c-miembros)' },
+      { ruta: '/hogares', etiqueta: 'Iglesias en el hogar', icono: 'cottage', color: 'var(--c-miembros)', exacto: true },
+      {
+        ruta: '/hogares/asistencia',
+        etiqueta: 'Asistencia',
+        icono: 'fact_check',
+        color: 'var(--c-miembros)',
+        visible: (a) => a.puede('miembros') || a.tieneHogar(),
+      },
     ],
   },
   {
@@ -49,20 +58,31 @@ const MENU: SeccionMenu[] = [
   {
     titulo: 'Tesorería',
     items: [
-      { ruta: '/tesoreria', etiqueta: 'Tesorería', icono: 'account_balance', color: 'var(--c-tesoreria)', visible: 'admin' },
-      { ruta: '/mi-celula', etiqueta: 'Ingresos de mi célula', icono: 'savings', color: 'var(--c-tesoreria)', visible: 'lider' },
+      { ruta: '/tesoreria', etiqueta: 'Tesorería', icono: 'account_balance', color: 'var(--c-tesoreria)', visible: (a) => a.puede('tesoreria') },
+      // Quien ve toda la Tesorería no necesita esta vista reducida.
+      {
+        ruta: '/mi-hogar',
+        etiqueta: 'Ingresos de mi iglesia en el hogar',
+        icono: 'savings',
+        color: 'var(--c-tesoreria)',
+        visible: (a) => a.tieneHogar() && !a.puede('tesoreria'),
+      },
     ],
   },
   {
     titulo: 'Ventas',
     items: [
-      { ruta: '/ventas', etiqueta: 'Ventas', icono: 'point_of_sale', color: 'var(--c-ventas)' },
-      { ruta: '/ventas/productos', etiqueta: 'Productos', icono: 'sell', color: 'var(--c-ventas)', visible: 'admin' },
+      { ruta: '/ventas', etiqueta: 'Ventas', icono: 'point_of_sale', color: 'var(--c-ventas)', exacto: true },
+      { ruta: '/ventas/productos', etiqueta: 'Productos', icono: 'sell', color: 'var(--c-ventas)', visible: (a) => a.puede('ventas') },
     ],
   },
   {
     titulo: 'Administración',
-    items: [{ ruta: '/usuarios', etiqueta: 'Usuarios', icono: 'admin_panel_settings', color: 'var(--c-admin)', visible: 'admin' }],
+    items: [
+      { ruta: '/usuarios', etiqueta: 'Usuarios', icono: 'manage_accounts', color: 'var(--c-admin)', visible: (a) => a.puede('usuarios') },
+      { ruta: '/roles', etiqueta: 'Roles y permisos', icono: 'admin_panel_settings', color: 'var(--c-admin)', visible: (a) => a.esAdmin() },
+      { ruta: '/configuracion', etiqueta: 'Configuración', icono: 'settings', color: 'var(--c-admin)', visible: (a) => a.esAdmin() },
+    ],
   },
 ];
 
@@ -74,7 +94,7 @@ const MENU: SeccionMenu[] = [
       <button class="btn btn-icono" type="button" (click)="menuAbierto.set(true)" aria-label="Abrir menú">
         <span class="icono">menu</span>
       </button>
-      <span class="marca-texto">{{ nombreIglesia }}</span>
+      <span class="marca-texto">{{ config.nombre() }}</span>
       <a class="avatar" routerLink="/perfil" [attr.aria-label]="'Perfil de ' + usuario()?.nombre">{{ iniciales() }}</a>
     </header>
 
@@ -84,9 +104,13 @@ const MENU: SeccionMenu[] = [
 
     <nav class="barra-lateral" [class.abierta]="menuAbierto()" aria-label="Menú principal">
       <div class="marca">
-        <span class="icono">church</span>
+        @if (config.logo()) {
+          <img class="logo" [src]="config.logo()" alt="" />
+        } @else {
+          <span class="icono">church</span>
+        }
         <div>
-          <strong>{{ nombreIglesia }}</strong>
+          <strong>{{ config.nombre() }}</strong>
           <small>Gestión integral</small>
         </div>
       </div>
@@ -97,7 +121,13 @@ const MENU: SeccionMenu[] = [
             <div class="seccion-titulo">{{ s.titulo }}</div>
           }
           @for (i of s.items; track i.ruta) {
-            <a [routerLink]="i.ruta" routerLinkActive="activo" [style.--color]="i.color" (click)="menuAbierto.set(false)">
+            <a
+              [routerLink]="i.ruta"
+              routerLinkActive="activo"
+              [routerLinkActiveOptions]="{ exact: !!i.exacto }"
+              [style.--color]="i.color"
+              (click)="menuAbierto.set(false)"
+            >
               <span class="icono">{{ i.icono }}</span>
               {{ i.etiqueta }}
             </a>
@@ -110,7 +140,7 @@ const MENU: SeccionMenu[] = [
           <span class="avatar">{{ iniciales() }}</span>
           <span>
             <strong>{{ usuario()?.nombre }}</strong>
-            <small>{{ auth.esAdmin() ? 'Administrador' : auth.esLider() ? 'Líder de célula' : 'Usuario' }}</small>
+            <small>{{ auth.rolTexto() }}</small>
           </span>
         </a>
         <button class="btn btn-icono" type="button" (click)="auth.logout()" title="Cerrar sesión" aria-label="Cerrar sesión">
@@ -196,6 +226,13 @@ const MENU: SeccionMenu[] = [
       .icono {
         font-size: 32px;
         color: var(--primario);
+      }
+      .logo {
+        width: 40px;
+        height: 40px;
+        object-fit: contain;
+        border-radius: 8px;
+        flex-shrink: 0;
       }
       strong {
         display: block;
@@ -289,13 +326,11 @@ export class Shell {
   readonly auth = inject(AuthService);
   readonly usuario = this.auth.usuario;
   readonly menuAbierto = signal(false);
-  readonly nombreIglesia = environment.nombreIglesia;
+  readonly config = inject(ConfigService);
 
   readonly menu = computed(() => {
-    const admin = this.auth.esAdmin();
-    // El admin ya ve toda la Tesorería, así que "Ingresos de mi célula" es solo para líderes no admin.
-    const lider = this.auth.esLider() && !admin;
-    const ve = (i: ItemMenu) => !i.visible || (i.visible === 'admin' ? admin : lider);
+    this.auth.usuario(); // se recalcula cuando cambian los permisos
+    const ve = (i: ItemMenu) => !i.visible || i.visible(this.auth);
     return MENU.map((s) => ({ ...s, items: s.items.filter(ve) })).filter((s) => s.items.length);
   });
 
@@ -309,7 +344,7 @@ export class Shell {
   );
 
   constructor() {
-    // Trae rol y célula actualizados (si un admin asignó una célula, aparece el menú del líder).
+    // Trae categoría, permisos e iglesia en el hogar actualizados (si el admin los cambió, el menú se ajusta).
     this.auth.refrescar();
     // Cierra el menú al navegar (por ejemplo con el botón atrás del teléfono).
     inject(Router)

@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import type { Registro } from '../core/modelos';
-import { fechaLarga, hoy, moneda, nombreCompleto, primerDiaMes, proximoCumpleanos, ultimoDiaMes } from '../core/utilidades';
+import { diasHasta, fechaLarga, hoy, moneda, nombreCompleto, primerDiaMes, proximoCumpleanos, textoDias, ultimoDiaMes } from '../core/utilidades';
 import { TIPO_EVENTO } from '../modulos.config';
 
 @Component({
@@ -38,7 +38,7 @@ import { TIPO_EVENTO } from '../modulos.config';
             <div class="etiqueta">Eventos próximos</div>
             <div class="valor">{{ proximosEventos().length }}</div>
           </div>
-          @if (auth.esAdmin()) {
+          @if (auth.puede('tesoreria')) {
             <div class="estadistica positivo">
               <div class="etiqueta">Ingresos del mes</div>
               <div class="valor">{{ moneda(ingresosMes()) }}</div>
@@ -48,11 +48,31 @@ import { TIPO_EVENTO } from '../modulos.config';
               <div class="valor">{{ moneda(egresosMes()) }}</div>
             </div>
           }
-          <div class="estadistica" style="--modulo: var(--c-ventas)">
-            <div class="etiqueta">Ventas del mes</div>
-            <div class="valor">{{ moneda(ventasMes()) }}</div>
-          </div>
+          @if (auth.puede('cuadre') || auth.puede('ventas')) {
+            <div class="estadistica" style="--modulo: var(--c-ventas)">
+              <div class="etiqueta">Ventas del mes</div>
+              <div class="valor">{{ moneda(ventasMes()) }}</div>
+            </div>
+          }
         </div>
+
+        @if (avisosPago().length) {
+          <section class="tarjeta mb avisos" style="--modulo: var(--c-tesoreria)">
+            <div class="tarjeta-titulo"><span class="icono">notifications_active</span> Pagos por vencer</div>
+            <ul class="lista-simple">
+              @for (p of avisosPago(); track p.id) {
+                <li>
+                  <span>
+                    <strong>{{ p['concepto'] }}</strong><br />
+                    <span class="texto-2 pequeno">{{ moneda(p['monto']) }} · {{ fecha(p['proximaFecha']) }}</span>
+                  </span>
+                  <span class="insignia" [class]="p.dias < 0 ? 'rojo' : p.dias <= 2 ? 'ambar' : 'azul'">{{ textoDias(p.dias) }}</span>
+                </li>
+              }
+            </ul>
+            <a class="btn btn-texto mt" routerLink="/tesoreria/recurrentes">Ver pagos recurrentes <span class="icono">chevron_right</span></a>
+          </section>
+        }
 
         <div class="rejilla">
           <section class="tarjeta" style="--modulo: var(--c-miembros)">
@@ -130,6 +150,8 @@ export class Inicio {
   readonly ingresos = signal<Registro[]>([]);
   readonly egresos = signal<Registro[]>([]);
   readonly ventas = signal<Registro[]>([]);
+  readonly recurrentes = signal<Registro[]>([]);
+  readonly textoDias = textoDias;
 
   readonly fechaHoy = fechaLarga(hoy());
   readonly moneda = moneda;
@@ -155,6 +177,14 @@ export class Inicio {
   readonly ingresosMes = computed(() => this.suma(this.ingresos(), 'monto'));
   readonly egresosMes = computed(() => this.suma(this.egresos(), 'monto'));
   readonly ventasMes = computed(() => this.suma(this.ventas(), 'total'));
+  /** Pagos recurrentes activos dentro de su periodo de aviso (o ya vencidos). */
+  readonly avisosPago = computed(() =>
+    this.recurrentes()
+      .filter((p) => p['activo'] !== false && p['proximaFecha'])
+      .map((p): Registro & { dias: number } => ({ ...p, dias: diasHasta(p['proximaFecha']) }))
+      .filter((p) => p.dias <= (Number(p['diasAviso']) || 0))
+      .sort((a, b) => a.dias - b.dias),
+  );
 
   constructor() {
     this.cargar();
@@ -175,10 +205,15 @@ export class Inicio {
     this.personas.set(personas);
     this.eventos.set(eventos);
     this.ventas.set(ventas);
-    if (this.auth.esAdmin()) {
-      const [ing, egr] = await Promise.all([seguro(this.api.listar('ingresos', mes)), seguro(this.api.listar('egresos', mes))]);
+    if (this.auth.puede('tesoreria')) {
+      const [ing, egr, rec] = await Promise.all([
+        seguro(this.api.listar('ingresos', mes)),
+        seguro(this.api.listar('egresos', mes)),
+        seguro(this.api.listar('pagos-recurrentes')),
+      ]);
       this.ingresos.set(ing);
       this.egresos.set(egr);
+      this.recurrentes.set(rec);
     }
     this.cargando.set(false);
   }

@@ -1,8 +1,8 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { environment } from '../../environments/environment';
 import { mensajeError } from '../core/auth.interceptor';
+import { ConfigService } from '../core/config.service';
 import { ApiService } from '../core/api.service';
 import type { Registro } from '../core/modelos';
 import { NotificacionesService } from '../core/notificaciones.service';
@@ -33,7 +33,7 @@ const suma = (l: Registro[], campo: string) => l.reduce((s, r) => s + (Number(r[
         <div>
           <h1><span class="icono">menu_book</span>Registro contable</h1>
           <p class="no-imprimir">Todos los movimientos del periodo con saldo acumulado.</p>
-          <p class="solo-impresion">{{ nombreIglesia }} · Del {{ fechaLarga(desde) }} al {{ fechaLarga(hasta) }}</p>
+          <p class="solo-impresion">{{ config.nombre() }} · Del {{ fechaLarga(desde) }} al {{ fechaLarga(hasta) }}</p>
         </div>
         <div class="acciones no-imprimir">
           <button class="btn" type="button" (click)="imprimir()"><span class="icono">print</span> Imprimir</button>
@@ -99,7 +99,7 @@ export class LibroContable {
   private api = inject(ApiService);
   private notif = inject(NotificacionesService);
 
-  readonly nombreIglesia = environment.nombreIglesia;
+  readonly config = inject(ConfigService);
   readonly moneda = moneda;
   readonly fechaCorta = fechaCorta;
   readonly fechaLarga = fechaLarga;

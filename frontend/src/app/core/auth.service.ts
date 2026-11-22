@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 import type { Sesion, Usuario } from './modelos';
+import type { Acceso } from './permisos';
 
 const CLAVE_TOKEN = 'iglesia.token';
 const CLAVE_USUARIO = 'iglesia.usuario';
@@ -36,9 +37,19 @@ export class AuthService {
   readonly usuario = signal<Usuario | null>(this.usuarioGuardado());
   readonly autenticado = computed(() => this.usuario() !== null);
   readonly esAdmin = computed(() => this.usuario()?.rol === 'admin');
-  readonly esLider = computed(() => !!this.usuario()?.celulaId);
+  /** Tiene el permiso "hogar" y una iglesia en el hogar asignada (registra su asistencia e ingresos). */
+  readonly tieneHogar = computed(() => this.puede('hogar') && !!this.usuario()?.celulaId);
+  /** Texto del rol para mostrar: Administrador, la categoría asignada o Usuario. */
+  readonly rolTexto = computed(() => (this.esAdmin() ? 'Administrador' : this.usuario()?.categoria || 'Usuario'));
 
-  /** Actualiza rol y célula desde el servidor (por si un admin los cambió después del login). */
+  /** ¿Puede hacer esto? Los permisos vienen de su categoría (el backend vuelve a comprobarlo siempre). */
+  puede(acceso: Acceso): boolean {
+    const u = this.usuario();
+    if (!u) return false;
+    return acceso === 'todos' || u.rol === 'admin' || !!u.permisos?.includes(acceso);
+  }
+
+  /** Actualiza categoría, permisos e iglesia en el hogar desde el servidor (por si el admin los cambió). */
   async refrescar() {
     try {
       const u = await firstValueFrom(this.http.get<Usuario>(`${this.url}/yo`));

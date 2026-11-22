@@ -1,7 +1,7 @@
 import { Component, effect, inject, input, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { environment } from '../../environments/environment';
 import { mensajeError } from '../core/auth.interceptor';
+import { ConfigService } from '../core/config.service';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import type { Registro } from '../core/modelos';
@@ -17,7 +17,7 @@ import { METODO_PAGO, TIPO_INGRESO } from '../modulos.config';
   template: `
     <div class="pagina">
       <div class="acciones mb no-imprimir">
-        <a class="btn btn-texto" [routerLink]="auth.esAdmin() ? '/tesoreria/ingresos' : '/mi-celula'"><span class="icono">arrow_back</span> Ingresos</a>
+        <a class="btn btn-texto" [routerLink]="auth.puede('tesoreria') ? '/tesoreria/ingresos' : '/mi-hogar'"><span class="icono">arrow_back</span> Ingresos</a>
         <span style="flex: 1"></span>
         <button class="btn btn-primario" type="button" (click)="imprimir()" [disabled]="!ingreso()"><span class="icono">print</span> Imprimir / PDF</button>
       </div>
@@ -26,8 +26,12 @@ import { METODO_PAGO, TIPO_INGRESO } from '../modulos.config';
         <article class="recibo tarjeta">
           <header>
             <div>
-              <span class="icono">church</span>
-              <h1>{{ nombreIglesia }}</h1>
+              @if (config.logo()) {
+                <img class="logo-recibo" [src]="config.logo()" alt="" />
+              } @else {
+                <span class="icono">church</span>
+              }
+              <h1>{{ config.nombre() }}</h1>
             </div>
             <div class="numero">
               <small>{{ r['personaId'] || r['donante'] ? 'CONSTANCIA DE DONACIÓN' : 'RECIBO' }}</small>
@@ -79,6 +83,11 @@ import { METODO_PAGO, TIPO_INGRESO } from '../modulos.config';
       .icono {
         font-size: 36px;
         color: var(--modulo);
+      }
+      .logo-recibo {
+        width: 56px;
+        height: 56px;
+        object-fit: contain;
       }
       h1 {
         font-size: 1.25rem;
@@ -163,7 +172,7 @@ export class Recibo {
   private api = inject(ApiService);
   private notif = inject(NotificacionesService);
 
-  readonly nombreIglesia = environment.nombreIglesia;
+  readonly config = inject(ConfigService);
   readonly tipos = TIPO_INGRESO;
   readonly metodos = METODO_PAGO;
   readonly moneda = moneda;

@@ -1,8 +1,8 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { environment } from '../../environments/environment';
 import { mensajeError } from '../core/auth.interceptor';
+import { ConfigService } from '../core/config.service';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import type { Registro } from '../core/modelos';
@@ -26,9 +26,9 @@ type Rango = 'hoy' | 'semana' | 'mes' | 'personalizado';
       <div class="pagina-encabezado no-imprimir">
         <div>
           <h1><span class="icono">point_of_sale</span>Ventas</h1>
-          <p>Registra ventas con pago por QR o en efectivo y genera reportes.</p>
+          <p>Registra ventas con pago por QR o en efectivo. El precio es el registrado en cada producto.</p>
         </div>
-        @if (auth.esAdmin()) {
+        @if (auth.puede('ventas')) {
           <div class="acciones">
             <a class="btn" routerLink="/ventas/productos"><span class="icono">sell</span> Productos</a>
             <button class="btn" type="button" (click)="abrirConfigQR()"><span class="icono">qr_code_2</span> Configurar QR</button>
@@ -52,10 +52,10 @@ type Rango = 'hoy' | 'semana' | 'mes' | 'personalizado';
               @if (!productos().length) {
                 <span class="ayuda">
                   No hay productos registrados.
-                  @if (auth.esAdmin()) {
+                  @if (auth.puede('ventas')) {
                     <a routerLink="/ventas/productos">Agregar productos</a>
                   } @else {
-                    Pide a un administrador que los agregue.
+                    Pide a quien administra las ventas que los agregue.
                   }
                 </span>
               }
@@ -65,8 +65,10 @@ type Rango = 'hoy' | 'semana' | 'mes' | 'personalizado';
               <input id="cantidad" name="cantidad" type="number" inputmode="numeric" min="1" step="1" [(ngModel)]="venta.cantidad" required />
             </div>
             <div class="campo">
-              <label for="precio" class="requerido">Precio unitario</label>
-              <input id="precio" name="precio" type="number" inputmode="decimal" min="0.01" step="0.01" [(ngModel)]="venta.precioUnitario" required />
+              <label>Precio unitario</label>
+              <div class="control cambio" title="El precio se toma del producto registrado y no se puede cambiar">
+                <span class="icono pequeno-icono">lock</span>{{ venta.precioUnitario ? moneda(venta.precioUnitario) : '—' }}
+              </div>
             </div>
 
             <div class="total completo">
@@ -97,7 +99,7 @@ type Rango = 'hoy' | 'semana' | 'mes' | 'personalizado';
                     <p class="pequeno negrita">{{ config().qrDescripcion }}</p>
                   }
                 } @else {
-                  <p class="texto-2">Aún no se ha subido la imagen del QR.{{ auth.esAdmin() ? ' Usa “Configurar QR”.' : ' Pide a un administrador que la suba.' }}</p>
+                  <p class="texto-2">Aún no se ha subido la imagen del QR.{{ auth.puede('ventas') ? ' Usa “Configurar QR”.' : ' Pide a quien administra las ventas que la suba.' }}</p>
                 }
               </div>
               <div class="campo completo">
@@ -133,12 +135,14 @@ type Rango = 'hoy' | 'semana' | 'mes' | 'personalizado';
         <!-- ═══ Reporte ═══ -->
         <section>
           <div class="solo-impresion mb">
-            <h2>{{ nombreIglesia }} — Reporte de ventas</h2>
+            <h2>{{ general.nombre() }} — {{ puedeCuadre() ? 'Cuadre de caja' : 'Mis ventas' }}</h2>
             <p>Del {{ fechaLarga(desde) }} al {{ fechaLarga(hasta) }}</p>
           </div>
 
           <div class="tarjeta no-imprimir mb">
-            <div class="tarjeta-titulo"><span class="icono">summarize</span> Reporte de ventas</div>
+            @if (puedeCuadre()) {
+            <div class="tarjeta-titulo"><span class="icono">price_check</span> Cuadre de caja</div>
+            <p class="texto-2 pequeno" style="margin-top: 0">Cuánto se generó en el periodo, separado en QR y efectivo, y cuánto registró cada persona.</p>
             <div class="chips" style="margin-bottom: 8px">
               <button type="button" class="chip" [class.activo]="rango() === 'hoy'" (click)="elegirRango('hoy')">Hoy</button>
               <button type="button" class="chip" [class.activo]="rango() === 'semana'" (click)="elegirRango('semana')">Últimos 7 días</button>
@@ -157,6 +161,10 @@ type Rango = 'hoy' | 'semana' | 'mes' | 'personalizado';
               <button class="btn" type="button" (click)="imprimir()" [disabled]="!filtradas().length"><span class="icono">print</span> Imprimir / PDF</button>
               <button class="btn" type="button" (click)="exportar()" [disabled]="!filtradas().length"><span class="icono">download</span> Guardar CSV</button>
             </div>
+            } @else {
+            <div class="tarjeta-titulo"><span class="icono">receipt_long</span> Mis ventas de hoy</div>
+            <p class="texto-2 pequeno" style="margin: 0">Las ventas que registraste hoy. El cuadre de caja lo hace la persona responsable.</p>
+            }
           </div>
 
           <div class="estadisticas">
@@ -181,7 +189,7 @@ type Rango = 'hoy' | 'semana' | 'mes' | 'personalizado';
                     <th>Pago</th>
                     <th>Fecha</th>
                     <th>Comprador</th>
-                    @if (auth.esAdmin()) {
+                    @if (auth.puede('ventas')) {
                       <th class="no-imprimir"></th>
                     }
                   </tr>
@@ -197,7 +205,7 @@ type Rango = 'hoy' | 'semana' | 'mes' | 'personalizado';
                       </td>
                       <td data-label="Fecha">{{ fechaCorta(v['fecha']) }}</td>
                       <td data-label="Comprador" [class.vacio]="!v['comprador']">{{ v['comprador'] }}</td>
-                      @if (auth.esAdmin()) {
+                      @if (auth.puede('ventas')) {
                         <td class="acciones-celda no-imprimir">
                           <button class="btn btn-icono" type="button" (click)="eliminar(v)" aria-label="Eliminar venta"><span class="icono rojo-texto">delete</span></button>
                         </td>
@@ -210,7 +218,7 @@ type Rango = 'hoy' | 'semana' | 'mes' | 'personalizado';
                     <td data-label="Total del periodo" colspan="2">Total del periodo</td>
                     <td class="num" data-label="Total">{{ moneda(totales().total) }}</td>
                     <td colspan="3" class="vacio"></td>
-                    @if (auth.esAdmin()) {
+                    @if (auth.puede('ventas')) {
                       <td class="vacio no-imprimir"></td>
                     }
                   </tr>
@@ -229,6 +237,23 @@ type Rango = 'hoy' | 'semana' | 'mes' | 'personalizado';
                 }
               </ul>
             </div>
+
+            @if (puedeCuadre()) {
+              <div class="tarjeta mt">
+                <div class="tarjeta-titulo"><span class="icono">badge</span> Por persona que registró</div>
+                <ul class="lista-simple">
+                  @for (v of porVendedor(); track v.vendedor) {
+                    <li>
+                      <span>
+                        <strong>{{ v.vendedor }}</strong><br />
+                        <span class="texto-2 pequeno">{{ v.ventas }} venta(s) · Efectivo {{ moneda(v.efectivo) }} · QR {{ moneda(v.qr) }}</span>
+                      </span>
+                      <strong>{{ moneda(v.total) }}</strong>
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
           }
         </section>
       </div>
@@ -317,8 +342,13 @@ type Rango = 'hoy' | 'semana' | 'mes' | 'personalizado';
     .cambio {
       display: flex;
       align-items: center;
+      gap: 6px;
       font-weight: 700;
       background: var(--superficie-2);
+      .pequeno-icono {
+        font-size: 16px;
+        color: var(--texto-2);
+      }
     }
     .qr-pantalla {
       position: fixed;
@@ -349,8 +379,10 @@ export class Ventas {
   private api = inject(ApiService);
   private notif = inject(NotificacionesService);
   readonly auth = inject(AuthService);
+  /** Quien hace el cuadre ve todas las ventas de cualquier periodo; los demás, solo las suyas de hoy. */
+  readonly puedeCuadre = computed(() => this.auth.puede('cuadre') || this.auth.puede('ventas'));
 
-  readonly nombreIglesia = environment.nombreIglesia;
+  readonly general = inject(ConfigService);
   readonly moneda = moneda;
   readonly fechaCorta = fechaCorta;
   readonly fechaLarga = fechaLarga;
@@ -382,6 +414,21 @@ export class Ventas {
     }
     return t;
   });
+  /** Cuadre de caja: lo vendido por cada persona (separando el efectivo que debe entregar). */
+  readonly porVendedor = computed(() => {
+    const m = new Map<string, { vendedor: string; ventas: number; efectivo: number; qr: number; total: number }>();
+    for (const v of this.filtradas()) {
+      const k = String(v['creadoPor'] ?? '—');
+      const a = m.get(k) ?? { vendedor: k, ventas: 0, efectivo: 0, qr: 0, total: 0 };
+      const t = Number(v['total']) || 0;
+      a.ventas += 1;
+      a.total += t;
+      if (v['metodoPago'] === 'qr') a.qr += t;
+      else a.efectivo += t;
+      m.set(k, a);
+    }
+    return [...m.values()].sort((a, b) => b.total - a.total);
+  });
   readonly porProducto = computed(() => {
     const m = new Map<string, { producto: string; cantidad: number; total: number }>();
     for (const v of this.filtradas()) {
@@ -411,7 +458,7 @@ export class Ventas {
     return (Number(this.recibido) || 0) - this.totalVenta();
   }
 
-  /** Al elegir un producto se copia su nombre y su precio (el precio se puede ajustar). */
+  /** Al elegir un producto se muestra su precio registrado (no se puede modificar: lo fija el servidor). */
   elegirProducto(id: string) {
     const p = this.productos().find((x) => x.id === id);
     this.venta.productoId = id;
@@ -463,7 +510,7 @@ export class Ventas {
 
   async registrar(invalido: boolean | null) {
     if (invalido || !this.venta.productoId || !this.venta.precioUnitario) {
-      this.notif.error('Elige un producto e indica cantidad y precio');
+      this.notif.error('Elige un producto e indica la cantidad');
       return;
     }
     if (this.venta.metodoPago === 'efectivo' && this.recibido && this.cambio() < 0) {
@@ -472,7 +519,8 @@ export class Ventas {
     }
     this.guardando.set(true);
     try {
-      await this.api.crear('ventas', { ...this.venta, referencia: this.venta.metodoPago === 'qr' ? this.venta.referencia : '' });
+      const { precioUnitario: _precio, producto: _nombre, ...datos } = this.venta;
+      await this.api.crear('ventas', { ...datos, referencia: this.venta.metodoPago === 'qr' ? this.venta.referencia : '' });
       this.notif.exito(`Venta registrada: ${moneda(this.totalVenta())}`);
       const metodo = this.venta.metodoPago;
       this.venta = { ...this.ventaVacia(), metodoPago: metodo };
