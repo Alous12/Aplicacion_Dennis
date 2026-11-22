@@ -1,5 +1,6 @@
 /**
- * Permisos que el administrador asigna a cada categoría en "Roles y permisos".
+ * Permisos que el administrador asigna A CADA USUARIO en "Usuarios → Permisos".
+ * La categoría (Pastor, Diácono, Líder…) es solo un identificador y no da permisos.
  * Debe coincidir con backend/src/lib/permisos.ts
  */
 export const PERMISOS = [
@@ -49,7 +50,7 @@ export const PERMISOS = [
   {
     clave: 'usuarios',
     etiqueta: 'Usuarios',
-    descripcion: 'Crear cuentas, aprobarlas, cambiar contraseñas y asignar la iglesia en el hogar.',
+    descripcion: 'Crear cuentas, aprobarlas, cambiar contraseñas, asignar categoría e iglesia en el hogar.',
     icono: 'manage_accounts',
   },
 ] as const;

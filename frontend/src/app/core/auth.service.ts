@@ -42,7 +42,7 @@ export class AuthService {
   /** Texto del rol para mostrar: Administrador, la categoría asignada o Usuario. */
   readonly rolTexto = computed(() => (this.esAdmin() ? 'Administrador' : this.usuario()?.categoria || 'Usuario'));
 
-  /** ¿Puede hacer esto? Los permisos vienen de su categoría (el backend vuelve a comprobarlo siempre). */
+  /** ¿Puede hacer esto? Los permisos los configura el admin a cada usuario (el backend vuelve a comprobarlo siempre). */
   puede(acceso: Acceso): boolean {
     const u = this.usuario();
     if (!u) return false;

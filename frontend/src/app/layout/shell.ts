@@ -80,7 +80,6 @@ const MENU: SeccionMenu[] = [
     titulo: 'Administración',
     items: [
       { ruta: '/usuarios', etiqueta: 'Usuarios', icono: 'manage_accounts', color: 'var(--c-admin)', visible: (a) => a.puede('usuarios') },
-      { ruta: '/roles', etiqueta: 'Roles y permisos', icono: 'admin_panel_settings', color: 'var(--c-admin)', visible: (a) => a.esAdmin() },
       { ruta: '/configuracion', etiqueta: 'Configuración', icono: 'settings', color: 'var(--c-admin)', visible: (a) => a.esAdmin() },
     ],
   },

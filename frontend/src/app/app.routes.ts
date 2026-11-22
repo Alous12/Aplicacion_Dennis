@@ -118,7 +118,7 @@ export const routes: Routes = [
 
       // Administración
       { path: 'usuarios', title: 'Usuarios', canActivate: [permisoGuard('usuarios')], loadComponent: () => import('./paginas/usuarios').then((m) => m.Usuarios) },
-      { path: 'roles', title: 'Roles y permisos', canActivate: [adminGuard], loadComponent: () => import('./paginas/roles').then((m) => m.Roles) },
+      { path: 'roles', redirectTo: 'usuarios' },
       { path: 'configuracion', title: 'Configuración', canActivate: [adminGuard], loadComponent: () => import('./paginas/configuracion').then((m) => m.Configuracion) },
       { path: 'perfil', title: 'Mi perfil', loadComponent: () => import('./paginas/perfil').then((m) => m.Perfil) },
     ],

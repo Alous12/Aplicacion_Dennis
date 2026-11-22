@@ -8,7 +8,7 @@ export const autenticadoGuard: CanActivateFn = () => {
   return auth.sesionVigente() ? true : inject(Router).createUrlTree(['/login']);
 };
 
-/** Solo el administrador principal (roles, permisos y configuración). */
+/** Solo el administrador principal (permisos de cada usuario y configuración). */
 export const adminGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
   return auth.sesionVigente() && auth.esAdmin() ? true : inject(Router).createUrlTree(['/']);

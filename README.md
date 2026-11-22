@@ -10,7 +10,7 @@ Aplicación web responsive (pensada primero para teléfono) con los módulos del
 | **Gestión de Recursos** | Inventario (insumos/equipos), espacios, reservas de aulas, mantenimiento |
 | **Tesorería** | Ofrendas/diezmos (culto, online, **por iglesia en el hogar**; se preselecciona la de quien registra), recibos numerados e imprimibles, pagos, **pagos recurrentes** con cuenta regresiva y aviso en Inicio, registro contable con saldo, presupuesto, reportes financieros. Los líderes registran los ingresos de su propia iglesia en el hogar. |
 | **Ventas** | Catálogo de **productos**, imagen del QR de cobro, registro de ventas eligiendo **QR o efectivo** (con cálculo de cambio). El **precio no se puede modificar**: lo fija el producto registrado. **Cuadre de caja** por día/periodo (QR, efectivo y por persona) para imprimir / PDF / CSV |
-| **Administración** | El admin **crea usuarios con contraseña** (o aprueba los que se registran solos), define **roles y permisos** y sube el **logo**. **Los administradores solo se crean en la base de datos.** |
+| **Administración** | El admin **crea usuarios con contraseña** (o aprueba los que se registran solos), les asigna una **categoría** y les **configura los permisos uno por uno**, y sube el **logo**. **Los administradores solo se crean en la base de datos.** |
 
 ## Arquitectura
 
@@ -25,26 +25,26 @@ Dennis/
 - **Autenticación:** JWT propio (firmado por el backend, 12 h).
   - Correo + contraseña (bcrypt).
   - Google: el frontend abre el popup de Google con Firebase Auth, envía el ID token al backend, que lo verifica y entrega el JWT de la app.
-- **Roles:** el `admin` (solo en la base de datos) controla todo. Los demás usuarios tienen una **categoría** (Pastor, Anciano, Ministro, Diácono, Líder, Sub líder o las que cree el admin, p. ej. "Subadmin") y reciben **sus permisos**. Las cuentas que se registran solas (correo o Google) quedan **pendientes** hasta que se aprueban.
+- **Roles:** el `admin` (solo en la base de datos) controla todo. Los demás usuarios tienen una **categoría** que solo los identifica (Pastor, Anciano, Ministro, Diácono, Líder, Sub líder o las que se creen, p. ej. "Subadmin") y **permisos propios** que el admin elige para cada persona. Las cuentas que se registran solas (correo o Google) quedan **pendientes** hasta que se aprueban.
 
-### Roles y permisos
+### Permisos por usuario
 
-En **Administración → Roles y permisos** el admin crea categorías y marca qué controla cada una:
+En **Usuarios**, junto a la categoría de cada persona, el botón **Permisos** abre el panel donde el admin marca qué puede controlar. Dos personas con la misma categoría pueden tener permisos distintos. El botón **Categorías** sirve para crear, renombrar o eliminar categorías.
 
 | Permiso | Qué permite |
 |---|---|
 | Personas e iglesias en el hogar | Eliminar personas, crear/editar iglesias en el hogar, asistencia de todas |
-| Su iglesia en el hogar | Asistencia e ingresos de la iglesia en el hogar asignada (Líder y Sub líder lo traen por defecto) |
+| Su iglesia en el hogar | Asistencia e ingresos de la iglesia en el hogar asignada (lo normal para líderes y sub líderes) |
 | Eventos y cultos | Eliminar eventos |
 | Ministerios y voluntarios | Gestionar ministerios, eliminar voluntarios |
 | Recursos | Inventario, espacios, eliminar mantenimientos |
 | Tesorería | Toda la tesorería |
 | Ventas y productos | Productos y precios, imagen del QR, editar/eliminar ventas |
 | Cuadre de caja | Ver todas las ventas de cada día (QR, efectivo y por persona) |
-| Usuarios | Crear cuentas, aprobarlas, cambiar contraseñas, asignar iglesia en el hogar |
+| Usuarios | Crear cuentas, aprobarlas, cambiar contraseñas, asignar categoría e iglesia en el hogar, gestionar categorías |
 
 - **Funciones básicas** (todos los usuarios aprobados): ver la información y registrar personas, eventos, voluntarios, reservas, mantenimientos y ventas (cada vendedor ve solo sus ventas).
-- Solo el admin asigna categorías y edita roles, así nadie puede darse más permisos. Quien tiene "Usuarios" no puede modificar a usuarios con permisos.
+- Solo el admin configura permisos, así nadie puede darse más. Quien tiene "Usuarios" no puede modificar a usuarios que tienen permisos (ni a sí mismo).
 - Los cambios de permisos aplican **al instante** (el backend los lee de la base en cada petición).
 - La lista de permisos está en `backend/src/lib/permisos.ts` y `frontend/src/app/core/permisos.ts` (deben coincidir).
 
