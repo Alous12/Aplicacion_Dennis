@@ -7,6 +7,13 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # El escáner de secretos de Netlify confunde datos PÚBLICOS de Firebase con secretos:
+  # - FIREBASE_PROJECT_ID: el ID del proyecto también aparece en el frontend (no es secreto).
+  # - La apiKey web de Firebase (AIza...): siempre va en el frontend; la seguridad la dan el
+  #   backend y las reglas de Firestore (que bloquean todo acceso directo).
+  # Los secretos reales (JWT_SECRET, FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL) se siguen escaneando.
+  SECRETS_SCAN_OMIT_KEYS = "FIREBASE_PROJECT_ID"
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyDNTpV1KfByuFC5ET5MKIde6Ub1sVdtxv8"
 
 [functions]
   node_bundler = "esbuild"
